@@ -5,7 +5,7 @@ For every answer we want to know:
   1. Which tracked brands appear, and in what order (rank 1 = named first).
   2. Whether each brand was actually recommended, just mentioned, or warned against.
   3. Whether the answer cites a brand's own website.
-  4. Which OTHER products the AI named that we are not tracking yet
+  4. Which OTHER businesses or products the AI named that we are not tracking yet
      (useful for discovering competitors you forgot).
 
 Two layers, on purpose:
@@ -95,7 +95,7 @@ Return ONLY a JSON object, no prose, shaped exactly like:
 Rules:
 - "stances" may only use names from the tracked list, and only brands the answer actually names.
 - recommended = presented as a good choice; negative = discouraged or criticized; neutral = mentioned without a verdict.
-- other_products = software products the answer names that are NOT on the tracked list."""
+- other_products = businesses, products, or services the answer names that are NOT on the tracked list."""
 
 
 def _parse_json_object(raw: str) -> dict:

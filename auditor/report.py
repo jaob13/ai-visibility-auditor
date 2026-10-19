@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import csv
 import html
+import io
 import json
 from dataclasses import asdict
 from datetime import date
@@ -91,7 +92,8 @@ def render_html(cfg: AuditConfig, res: AuditResult, sample: bool) -> str:
     parts.append(f"<p class='muted'>Score weights: {w}. Rank 1 means named first.</p>")
 
     # 3. gaps
-    parts.append(f"<h2>Where you're missing ({len(res.gaps)} answers)</h2>")
+    n = len(res.gaps)
+    parts.append(f"<h2>Where you're missing ({n} answer{'' if n == 1 else 's'})</h2>")
     if res.gaps:
         parts.append("<div class='wrap'><table><tr><th>Engine</th><th>Question</th><th>Named instead</th></tr>")
         for g in res.gaps:
@@ -121,21 +123,11 @@ def render_html(cfg: AuditConfig, res: AuditResult, sample: bool) -> str:
     return "".join(parts)
 
 
-def write_reports(cfg: AuditConfig, res: AuditResult, out_dir: str | Path, sample: bool = False) -> Path:
-    out = Path(out_dir)
-    out.mkdir(parents=True, exist_ok=True)
-    (out / "report.html").write_text(render_html(cfg, res, sample), encoding="utf-8")
-
-    with (out / "scores.csv").open("w", newline="", encoding="utf-8") as f:
-        fields = ["brand", "is_target", "score", "mention_rate", "top3_rate", "first_rate",
-                  "avg_rank", "citation_rate", "share_of_voice", "recommended", "negative", "answers"]
-        w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
-        w.writeheader()
-        for b in res.brands:
-            w.writerow(asdict(b))
-
-    payload = {
+def build_payload(cfg: AuditConfig, res: AuditResult, sample: bool = False) -> dict:
+    """Everything about a run as plain data: used for results.json and the web app."""
+    return {
         "target": cfg.target.name, "sample_data": sample,
+        "competitors": [b.name for b in cfg.competitors], "questions": cfg.questions,
         "brands": [asdict(b) for b in res.brands],
         "target_by_engine": res.target_by_engine,
         "gaps": [asdict(g) for g in res.gaps],
@@ -146,5 +138,26 @@ def write_reports(cfg: AuditConfig, res: AuditResult, out_dir: str | Path, sampl
                      "others": ex.others, "rejected": ex.rejected, "method": ex.method, "note": ex.note}
                     for a, ex in res.rows],
     }
-    (out / "results.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+CSV_FIELDS = ["brand", "is_target", "score", "mention_rate", "top3_rate", "first_rate",
+              "avg_rank", "citation_rate", "share_of_voice", "recommended", "negative", "answers"]
+
+
+def render_csv(res: AuditResult) -> str:
+    """Leaderboard as CSV text (one row per brand) for Sheets or Excel."""
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=CSV_FIELDS, extrasaction="ignore")
+    w.writeheader()
+    for b in res.brands:
+        w.writerow(asdict(b))
+    return buf.getvalue()
+
+
+def write_reports(cfg: AuditConfig, res: AuditResult, out_dir: str | Path, sample: bool = False) -> Path:
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "report.html").write_text(render_html(cfg, res, sample), encoding="utf-8")
+    (out / "scores.csv").write_text(render_csv(res), encoding="utf-8", newline="")
+    (out / "results.json").write_text(json.dumps(build_payload(cfg, res, sample), indent=2), encoding="utf-8")
     return out / "report.html"

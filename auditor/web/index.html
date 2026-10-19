@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Visibility Auditor</title>
+<!--
+  The whole interface is this one file: layout (HTML), look (CSS), behavior (JS at the bottom).
+  It talks to the local Python server (auditor/server.py) through four calls:
+  /api/plan, /api/run, /api/demo, and /api/job/<id> for live progress.
+-->
+<style>
+:root{--ink:#14202e;--muted:#5d6876;--line:#dfe4ea;--bg:#f5f7fa;--card:#fff;--accent:#1f6feb;--accent-ink:#fff;--good:#0f9d58;--warn:#b54708;--soft:#eef3fb}
+@media (prefers-color-scheme:dark){:root{--ink:#e6ebf1;--muted:#98a3af;--line:#2a333e;--bg:#0f141a;--card:#161c23;--accent:#4c8dff;--accent-ink:#0b1016;--good:#3fb950;--warn:#f0883e;--soft:#1b2430}}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink);background:var(--bg)}
+header{border-bottom:1px solid var(--line);background:var(--card)}
+.bar{max-width:980px;margin:0 auto;padding:14px 16px;display:flex;align-items:center;gap:12px;justify-content:space-between}
+.brand{font-weight:700;letter-spacing:-.01em}.brand span{color:var(--muted);font-weight:500}
+.steps{display:flex;gap:6px;font-size:13px;color:var(--muted)}.steps b{padding:3px 10px;border-radius:99px;font-weight:600}
+.steps b.on{background:var(--accent);color:var(--accent-ink)}.steps b.done{background:var(--soft);color:var(--ink)}
+main{max-width:980px;margin:0 auto;padding:24px 16px 80px}
+h1{font-size:24px;margin:0 0 4px;letter-spacing:-.01em}h2{font-size:17px;margin:28px 0 10px}
+.sub{color:var(--muted);margin:0 0 20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px;margin-bottom:16px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}@media(max-width:700px){.grid{grid-template-columns:1fr}.steps{display:none}}
+label{display:block;font-weight:600;font-size:13.5px;margin-bottom:5px}label small{font-weight:400;color:var(--muted)}
+input[type=text],input[type=url],input[type=password],input[type=number],textarea,select{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+textarea{min-height:70px;resize:vertical}input:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:-1px}
+.full{grid-column:1/-1}
+.seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}.seg label{flex:1;margin:0;text-align:center;padding:9px;cursor:pointer;font-weight:500;background:var(--bg)}
+.seg input{display:none}.seg input:checked+span{color:var(--accent);font-weight:700}
+.seg label:has(input:checked){background:var(--soft)}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+button{font:inherit;font-weight:600;border-radius:8px;padding:10px 16px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}button:disabled{opacity:.55;cursor:default}
+button.link{border:none;background:none;color:var(--accent);padding:6px 4px}
+button.x{padding:6px 10px;color:var(--muted)}
+details{border-top:1px solid var(--line);margin-top:16px;padding-top:12px}summary{cursor:pointer;font-weight:600}
+.note{background:var(--soft);border-radius:8px;padding:10px 12px;margin:8px 0;font-size:14px}
+.err{background:#fde8e8;color:#8a1c1c;border-radius:8px;padding:10px 12px;margin:10px 0;display:none}
+@media (prefers-color-scheme:dark){.err{background:#3a1717;color:#ffb4b4}}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--line);vertical-align:middle}
+th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.badge{font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:99px;white-space:nowrap}
+.badge.places{background:#e3f4ea;color:#0b6b3a}.badge.ai{background:#e8eefc;color:#1f4fb8}.badge.you{background:#fff1e0;color:#8a4b00}
+@media (prefers-color-scheme:dark){.badge.places{background:#123222;color:#7ee2a8}.badge.ai{background:#16244a;color:#9dbbff}.badge.you{background:#3a2610;color:#ffc27a}}
+.muted{color:var(--muted)}.qrow{display:flex;gap:8px;margin-bottom:8px}.qrow input{flex:1}
+pre.log{background:#0b1016;color:#cfe3ff;border-radius:10px;padding:14px;min-height:180px;max-height:360px;overflow:auto;font:13px/1.5 ui-monospace,Consolas,monospace;white-space:pre-wrap}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:s 0.8s linear infinite;vertical-align:-2px;margin-right:8px}@keyframes s{to{transform:rotate(360deg)}}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}.big{font-size:32px;font-weight:700}
+iframe{width:100%;height:900px;overflow:hidden;border:1px solid var(--line);border-radius:12px;background:#fff}
+.hide{display:none!important}
+</style>
+</head>
+<body>
+<header><div class="bar">
+  <div class="brand">AI Visibility Auditor <span>&middot; does AI recommend you?</span></div>
+  <div class="steps"><b id="st1" class="on">1 Business</b><b id="st2">2 Review</b><b id="st3">3 Run</b><b id="st4">4 Results</b></div>
+</div></header>
+
+<main>
+<!-- STEP 1: tell us about the business ------------------------------------------------------ -->
+<section id="s1">
+  <h1>Tell us about the business</h1>
+  <p class="sub">We'll read the website, find who you compete with, and ask AI assistants the questions your customers ask.</p>
+  <div class="card"><div class="grid">
+    <div><label for="name">Business name *</label><input id="name" type="text" placeholder="e.g. Piel Body Spa"></div>
+    <div><label for="website">Website</label><input id="website" type="url" placeholder="e.g. pielbodyspa.com"></div>
+    <div class="full"><label for="what">What does the business do? *</label>
+      <textarea id="what" placeholder="e.g. Day spa offering facials, body wraps, and massage"></textarea></div>
+    <div><label for="customers">Who are your customers? <small>(optional)</small></label>
+      <textarea id="customers" placeholder="e.g. Women 25-55 looking for self-care and skin treatments"></textarea></div>
+    <div><label for="difference">What makes you different? <small>(optional)</small></label>
+      <textarea id="difference" placeholder="e.g. Medical-grade products, licensed estheticians, same-week booking"></textarea></div>
+    <div class="full"><label>How far does your market reach? *</label>
+      <div class="seg" id="scale">
+        <label><input type="radio" name="scale" value="local" checked><span>Local radius</span></label>
+        <label><input type="radio" name="scale" value="state"><span>My state</span></label>
+        <label><input type="radio" name="scale" value="national"><span>Nationwide</span></label>
+      </div></div>
+    <div id="locwrap"><label for="location">Location *</label><input id="location" type="text" placeholder="City, State (e.g. Charlotte, NC)"></div>
+    <div id="radwrap"><label for="radius">Radius <small>(miles)</small></label><input id="radius" type="number" min="1" max="100" value="25"></div>
+  </div>
+
+  <details id="settings" open><summary>AI settings</summary>
+    <div class="grid" style="margin-top:12px">
+      <div><label for="k_anthropic">Anthropic (Claude) API key *</label>
+        <input id="k_anthropic" type="password" placeholder="sk-ant-..." autocomplete="off">
+        <div class="muted" style="font-size:12.5px;margin-top:4px">Used to plan the audit and read answers. Kept in memory only, never saved.</div></div>
+      <div><label for="k_places">Google Places API key <small>(optional, local only)</small></label>
+        <input id="k_places" type="password" placeholder="AIza..." autocomplete="off">
+        <div class="muted" style="font-size:12.5px;margin-top:4px">Finds real competitors inside your radius from map data.</div></div>
+      <div class="full"><label>Which AI assistants to test</label>
+        <div class="row">
+          <label class="row" style="font-weight:500"><input type="checkbox" class="eng" value="claude" checked> Claude</label>
+          <label class="row" style="font-weight:500"><input type="checkbox" class="eng" value="openai"> ChatGPT</label>
+          <label class="row" style="font-weight:500"><input type="checkbox" class="eng" value="gemini"> Gemini</label>
+          <label class="row" style="font-weight:500;margin-left:auto"><input type="checkbox" id="label" checked> Read tone (recommended vs. warned against)</label>
+        </div></div>
+      <div id="w_openai" class="hide"><label for="k_openai">OpenAI API key</label><input id="k_openai" type="password" autocomplete="off"></div>
+      <div id="w_gemini" class="hide"><label for="k_gemini">Gemini API key</label><input id="k_gemini" type="password" autocomplete="off"></div>
+    </div>
+  </details>
+  </div>
+  <div class="err" id="err1"></div>
+  <div class="row">
+    <button class="primary" id="planBtn">Plan my audit</button>
+    <button class="link" id="demoBtn">or see a sample report (no key needed)</button>
+  </div>
+</section>
+
+<!-- STEP 2: review the AI's plan ---------------------------------------------------------- -->
+<section id="s2" class="hide">
+  <h1>Review the plan</h1>
+  <p class="sub">The AI proposed these. Edit anything that's wrong; nothing is scored until you run it.</p>
+  <div id="notes"></div>
+  <div class="card">
+    <div class="row" style="justify-content:space-between"><h2 style="margin:0">Who you're compared against</h2>
+      <span class="muted" id="category"></span></div>
+    <table><thead><tr><th>Business</th><th>Website</th><th>Source</th><th></th></tr></thead><tbody id="comps"></tbody></table>
+    <button class="link" id="addComp">+ Add a competitor</button>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0">Questions we'll ask the AI</h2>
+    <p class="muted" style="margin-top:0">Written the way a customer would ask. Keep brand names out of them.</p>
+    <div id="qs"></div>
+    <button class="link" id="addQ">+ Add a question</button>
+  </div>
+  <div class="err" id="err2"></div>
+  <div class="row"><button id="back1">Back</button><button class="primary" id="runBtn">Run the audit</button>
+    <span class="muted" id="cost"></span></div>
+</section>
+
+<!-- STEP 3: progress ---------------------------------------------------------------------- -->
+<section id="s3" class="hide">
+  <h1><span class="spin"></span><span id="runTitle">Working...</span></h1>
+  <p class="sub">This usually takes one to three minutes. You can watch each step below.</p>
+  <pre class="log" id="log"></pre>
+  <div class="err" id="err3"></div>
+  <button id="back2" class="hide">Back</button>
+</section>
+
+<!-- STEP 4: results + export -------------------------------------------------------------- -->
+<section id="s4" class="hide">
+  <h1 id="resTitle">Results</h1>
+  <div class="row" style="margin-bottom:16px">
+    <strong>Export:</strong>
+    <button id="xHtml">Report (HTML)</button><button id="xPdf">Print / Save as PDF</button>
+    <button id="xCsv">Scores (CSV)</button><button id="xJson">All data (JSON)</button>
+    <button class="link" id="again" style="margin-left:auto">Start a new audit</button>
+  </div>
+  <iframe id="report" title="Audit report"></iframe>
+</section>
+</main>
+
+<script>
+/* ---------- tiny helpers ---------- */
+const $ = id => document.getElementById(id);
+const val = id => $(id).value.trim();
+const scale = () => document.querySelector('input[name=scale]:checked').value;
+let plan = null, jobId = null;
+
+function show(step){
+  for (let i=1;i<=4;i++){ $('s'+i).classList.toggle('hide', i!==step);
+    $('st'+i).className = i===step ? 'on' : (i<step ? 'done' : ''); }
+  window.scrollTo(0,0);
+}
+function err(n, msg){ const e=$('err'+n); e.textContent=msg||''; e.style.display=msg?'block':'none'; }
+async function post(url, body){
+  const r = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
+  const data = await r.json(); if(!r.ok) throw new Error(data.error||('HTTP '+r.status)); return data;
+}
+function keys(){ return {anthropic:val('k_anthropic'), places:val('k_places'), openai:val('k_openai'), gemini:val('k_gemini')}; }
+function engines(){ return [...document.querySelectorAll('.eng:checked')].map(e=>e.value); }
+
+/* ---------- step 1: form behavior ---------- */
+function syncScale(){ const s=scale(); $('radwrap').classList.toggle('hide', s!=='local'); $('locwrap').classList.toggle('hide', s==='national'); }
+document.querySelectorAll('input[name=scale]').forEach(r=>r.addEventListener('change', syncScale));
+document.querySelectorAll('.eng').forEach(c=>c.addEventListener('change',()=>{
+  $('w_openai').classList.toggle('hide', !document.querySelector('.eng[value=openai]').checked);
+  $('w_gemini').classList.toggle('hide', !document.querySelector('.eng[value=gemini]').checked);
+}));
+syncScale();
+
+$('planBtn').onclick = async () => {
+  err(1);
+  if(!val('name')) return err(1,'Enter the business name.');
+  if(!val('what')) return err(1,'Tell us what the business does.');
+  if(scale()!=='national' && !val('location')) return err(1,'Enter a location (City, State).');
+  if(!val('k_anthropic')) return err(1,'Enter your Anthropic API key under AI settings.');
+  const business = {name:val('name'), website:val('website'), what_you_do:val('what'), customers:val('customers'),
+    difference:val('difference'), location:val('location'), scale:scale(), radius_miles:+$('radius').value||25};
+  try { const job = await post('/api/plan',{business, keys:keys()}); track(job.id,'Planning your audit...', onPlanned); }
+  catch(e){ err(1,e.message); }
+};
+$('demoBtn').onclick = async () => { const job = await post('/api/demo'); track(job.id,'Running the sample...', onResults); };
+
+/* ---------- step 3: live progress (shared by planning and running) ---------- */
+function track(id, title, onDone){
+  jobId = id; $('runTitle').textContent = title; $('log').textContent=''; err(3); $('back2').classList.add('hide'); show(3);
+  const timer = setInterval(async ()=>{
+    const j = await (await fetch('/api/job/'+id)).json();
+    $('log').textContent = (j.log||[]).join('\n'); $('log').scrollTop = 1e9;
+    if (j.status==='done'){ clearInterval(timer); onDone(j); }
+    if (j.status==='error'){ clearInterval(timer); err(3,j.error); $('back2').classList.remove('hide'); }
+  }, 700);
+}
+$('back2').onclick = () => show(plan ? 2 : 1);
+
+/* ---------- step 2: review and edit the plan ---------- */
+function onPlanned(job){ plan = job.plan; renderPlan(); show(2); }
+
+function renderPlan(){
+  $('category').textContent = plan.category ? 'Category: '+plan.category : '';
+  $('notes').innerHTML = (plan.notes||[]).map(n=>`<div class="note">${esc(n)}</div>`).join('');
+  $('comps').innerHTML = `<tr><td><b>${esc(plan.target_name)}</b></td><td class="muted">${esc((plan.target_domains||[]).join(', '))}</td>
+     <td><span class="badge you">You</span></td><td></td></tr>` +
+    plan.competitors.map((c,i)=>`<tr>
+     <td><input type="text" value="${esc(c.name)}" data-i="${i}" data-f="name"></td>
+     <td><input type="text" value="${esc((c.domains||[]).join(', '))}" data-i="${i}" data-f="domains" placeholder="website.com"></td>
+     <td><span class="badge ${c.source==='places'?'places':'ai'}" title="${esc(c.detail||'')}">${c.source==='places'?'Map data':'AI suggestion'}</span>
+         <div class="muted" style="font-size:12px">${esc(c.detail||'')}</div></td>
+     <td><button class="x" data-del="${i}" title="Remove">&times;</button></td></tr>`).join('');
+  $('qs').innerHTML = plan.questions.map((q,i)=>`<div class="qrow"><input type="text" value="${esc(q)}" data-q="${i}">
+     <button class="x" data-dq="${i}" title="Remove">&times;</button></div>`).join('');
+  const n = engines().length * plan.questions.length;
+  $('cost').textContent = `${n} AI answers will be collected.`;
+}
+function esc(s){ return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+document.addEventListener('input', e=>{
+  const t=e.target;
+  if (t.dataset.f==='name') plan.competitors[t.dataset.i].name = t.value;
+  if (t.dataset.f==='domains') plan.competitors[t.dataset.i].domains = t.value.split(',').map(s=>s.trim().toLowerCase().replace(/^https?:\/\//,'').replace(/^www\./,'').replace(/\/.*$/,'')).filter(Boolean);
+  if (t.dataset.q!==undefined) plan.questions[t.dataset.q] = t.value;
+});
+document.addEventListener('click', e=>{
+  const t=e.target.closest('button'); if(!t) return;
+  if (t.dataset.del!==undefined){ plan.competitors.splice(+t.dataset.del,1); renderPlan(); }
+  if (t.dataset.dq!==undefined){ plan.questions.splice(+t.dataset.dq,1); renderPlan(); }
+});
+$('addComp').onclick = ()=>{ plan.competitors.push({name:'',domains:[],aliases:[],source:'ai',detail:'Added by you'}); renderPlan(); };
+$('addQ').onclick = ()=>{ plan.questions.push(''); renderPlan(); };
+$('back1').onclick = ()=> show(1);
+
+$('runBtn').onclick = async ()=>{
+  err(2);
+  plan.competitors = plan.competitors.filter(c=>c.name.trim());
+  plan.questions = plan.questions.map(q=>q.trim()).filter(Boolean);
+  if(!plan.competitors.length) return err(2,'Add at least one competitor.');
+  if(!plan.questions.length) return err(2,'Add at least one question.');
+  if(!engines().length) return err(2,'Pick at least one AI assistant under AI settings.');
+  try { const job = await post('/api/run',{plan, keys:keys(), engines:engines(), label:$('label').checked});
+        track(job.id,'Running your audit...', onResults); }
+  catch(e){ err(2,e.message); }
+};
+
+/* ---------- step 4: results + export ---------- */
+function onResults(job){
+  const s = job.summary;
+  $('resTitle').textContent = 'Results for ' + s.target;
+  const f = $('report');
+  f.onload = () => { f.style.height = (f.contentDocument.documentElement.scrollHeight + 20) + 'px'; };
+  f.src = '/api/report/'+job.id;
+  show(4);
+}
+const dl = fmt => { window.location = `/api/export/${jobId}/${fmt}`; };
+$('xHtml').onclick = ()=>dl('html'); $('xCsv').onclick = ()=>dl('csv'); $('xJson').onclick = ()=>dl('json');
+$('xPdf').onclick = ()=>{ const w = $('report').contentWindow; w.focus(); w.print(); };
+$('again').onclick = ()=>{ plan=null; show(1); };
+</script>
+</body>
+</html>

@@ -3,11 +3,14 @@ cli.py - the command you run. Wires the five stages together in order.
 
 Examples:
 
+  # The web app (recommended): opens http://127.0.0.1:8765 in your browser
+  python -m auditor
+
   # Offline demo with the bundled sample answers (no API keys, costs nothing):
   python -m auditor examples/greenprint.json --replay examples/sample_answers.json
 
   # Live audit: ask Claude, label stances with Claude, cache answers in runs/cache:
-  set ANTHROPIC_API_KEY=sk-...
+  $env:ANTHROPIC_API_KEY = "sk-ant-..."   (PowerShell)
   python -m auditor examples/greenprint.json --engines claude --label
 
   # Re-score an earlier live run for free (answers come from the cache):
@@ -27,13 +30,22 @@ import argparse
 import sys
 
 from .config import load_config
-from .engines import ClaudeEngine, collect_answers, load_replay_engines, make_engine
-from .extract import extract
+from .engines import ClaudeEngine, load_replay_engines, make_engine
+from .pipeline import run_audit
 from .report import write_reports
-from .score import score_audit
 
 
 def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    if not argv or argv[0] == "serve":
+        sp = argparse.ArgumentParser(prog="auditor serve", description="Start the web app.")
+        sp.add_argument("--port", type=int, default=8765)
+        sp.add_argument("--no-browser", action="store_true", help="don't open a browser tab")
+        a = sp.parse_args(argv[1:])
+        from .server import serve
+        serve(a.port, open_browser=not a.no_browser)
+        return 0
+
     p = argparse.ArgumentParser(prog="auditor", description="Measure how AI assistants recommend a brand.")
     p.add_argument("config", help="audit JSON file (see examples/greenprint.json)")
     p.add_argument("--engines", help="comma list overriding the config, e.g. claude,openai,gemini")
@@ -55,14 +67,11 @@ def main(argv: list[str] | None = None) -> int:
         names = args.engines.split(",") if args.engines else cfg.engines
         engines = [make_engine(n.strip()) for n in names]
         cache = args.cache
-    answers = collect_answers(engines, cfg.questions, cache_dir=cache)
-
-    # Stage 3: translate (rules always; AI labeling only with --label)
+    # Stages 3 and 4: translate (AI tone labels only with --label) and judge
     labeler = ClaudeEngine() if args.label else None
-    rows = [(a, extract(a.text, cfg.brands, labeler)) for a in answers]
+    result = run_audit(cfg, engines, labeler=labeler, cache_dir=cache)
 
-    # Stages 4 and 5: judge and show
-    result = score_audit(cfg, rows)
+    # Stage 5: show
     report = write_reports(cfg, result, args.out, sample=bool(args.replay))
 
     target = next(b for b in result.brands if b.is_target)

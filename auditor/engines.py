@@ -66,29 +66,39 @@ def _post_json(url: str, payload: dict, headers: dict, retries: int = 3) -> dict
                 time.sleep(2 ** attempt * 2)
                 continue
             detail = e.read().decode("utf-8", "replace")[:300]
-            raise RuntimeError(f"{url} returned HTTP {e.code}: {detail}") from e
-    raise RuntimeError(f"{url} failed after {retries} attempts")
+            raise RuntimeError(f"{_safe(url)} returned HTTP {e.code}: {detail}") from e
+        except urllib.error.URLError as e:
+            raise RuntimeError(f"Couldn't reach {_safe(url)}: {e.reason}") from e
+    raise RuntimeError(f"{_safe(url)} failed after {retries} attempts")
 
 
-def _require_key(var: str) -> str:
-    key = os.environ.get(var)
+def _safe(url: str) -> str:
+    """Drop the query string so a key passed in the URL (Gemini) never shows up in errors."""
+    return url.split("?", 1)[0]
+
+
+def _require_key(var: str, given: str | None = None) -> str:
+    """Use a key passed in directly (from the web app) or fall back to the environment.
+    Keys are only ever held in memory; nothing here writes them to disk."""
+    key = (given or "").strip() or os.environ.get(var)
     if not key:
-        raise RuntimeError(f"Set the {var} environment variable to use this engine.")
+        raise RuntimeError(f"No API key: enter it in the app or set {var}.")
     return key
 
 
 class ClaudeEngine:
     name = "claude"
 
-    def __init__(self, model: str = "claude-sonnet-4-6"):
+    def __init__(self, model: str = "claude-sonnet-4-6", api_key: str | None = None):
         self.model = model
+        self.api_key = api_key
 
     def ask(self, question: str, system: str = ASK_SYSTEM_PROMPT, max_tokens: int = 1200) -> str:
         data = _post_json(
             "https://api.anthropic.com/v1/messages",
             {"model": self.model, "max_tokens": max_tokens, "system": system,
              "messages": [{"role": "user", "content": question}]},
-            {"x-api-key": _require_key("ANTHROPIC_API_KEY"), "anthropic-version": "2023-06-01"},
+            {"x-api-key": _require_key("ANTHROPIC_API_KEY", self.api_key), "anthropic-version": "2023-06-01"},
         )
         return "".join(block.get("text", "") for block in data.get("content", []))
 
@@ -96,8 +106,9 @@ class ClaudeEngine:
 class OpenAIEngine:
     name = "openai"
 
-    def __init__(self, model: str = "gpt-4o-mini"):
+    def __init__(self, model: str = "gpt-4o-mini", api_key: str | None = None):
         self.model = model
+        self.api_key = api_key
 
     def ask(self, question: str) -> str:
         data = _post_json(
@@ -105,7 +116,7 @@ class OpenAIEngine:
             {"model": self.model, "messages": [
                 {"role": "system", "content": ASK_SYSTEM_PROMPT},
                 {"role": "user", "content": question}]},
-            {"authorization": f"Bearer {_require_key('OPENAI_API_KEY')}"},
+            {"authorization": f"Bearer {_require_key('OPENAI_API_KEY', self.api_key)}"},
         )
         return data["choices"][0]["message"]["content"]
 
@@ -113,12 +124,13 @@ class OpenAIEngine:
 class GeminiEngine:
     name = "gemini"
 
-    def __init__(self, model: str = "gemini-2.0-flash"):
+    def __init__(self, model: str = "gemini-2.0-flash", api_key: str | None = None):
         self.model = model
+        self.api_key = api_key
 
     def ask(self, question: str) -> str:
         url = (f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}"
-               f":generateContent?key={_require_key('GEMINI_API_KEY')}")
+               f":generateContent?key={_require_key('GEMINI_API_KEY', self.api_key)}")
         data = _post_json(url, {
             "systemInstruction": {"parts": [{"text": ASK_SYSTEM_PROMPT}]},
             "contents": [{"role": "user", "parts": [{"text": question}]}],
@@ -143,10 +155,10 @@ class ReplayEngine:
 LIVE_ENGINES = {"claude": ClaudeEngine, "openai": OpenAIEngine, "gemini": GeminiEngine}
 
 
-def make_engine(name: str):
+def make_engine(name: str, api_key: str | None = None):
     if name not in LIVE_ENGINES:
         raise ValueError(f"Unknown engine '{name}'. Choose from: {', '.join(LIVE_ENGINES)}")
-    return LIVE_ENGINES[name]()
+    return LIVE_ENGINES[name](api_key=api_key)
 
 
 def load_replay_engines(path: str | Path) -> list[ReplayEngine]:
