@@ -1,0 +1,23 @@
+{
+  "_about": "Example audit: how visible is GreenPrint (field service software) when small service businesses ask AI assistants what software to use?",
+  "target": {
+    "name": "GreenPrint",
+    "aliases": ["Green Print"],
+    "domains": ["getgreenprint.app"]
+  },
+  "competitors": [
+    {"name": "Jobber", "aliases": [], "domains": ["getjobber.com"]},
+    {"name": "Housecall Pro", "aliases": ["HousecallPro", "Housecall"], "domains": ["housecallpro.com"]},
+    {"name": "ServiceTitan", "aliases": ["Service Titan"], "domains": ["servicetitan.com"]},
+    {"name": "Workiz", "aliases": [], "domains": ["workiz.com"]}
+  ],
+  "questions": [
+    "What is the best software for a small cleaning company to schedule jobs and send invoices?",
+    "I run a 3-person lawn care business. What app should I use for quotes, scheduling, and payments?",
+    "What field service software has built-in bookkeeping so I don't need QuickBooks?",
+    "Which field service management tool is best for a small HVAC company?",
+    "What are good alternatives to Jobber for a small service business?",
+    "What software can track which marketing channel brought in each customer for a home services business?"
+  ],
+  "engines": ["claude", "openai", "gemini"]
+}
