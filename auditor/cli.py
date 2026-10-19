@@ -37,11 +37,11 @@ from .report import write_reports
 
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
-    if not argv or argv[0] == "serve":
-        sp = argparse.ArgumentParser(prog="auditor serve", description="Start the web app.")
+    if not argv or argv[0] == "serve" or argv[0].startswith("--port") or argv[0] == "--no-browser":
+        sp = argparse.ArgumentParser(prog="auditor", description="Start the web app.")
         sp.add_argument("--port", type=int, default=8765)
         sp.add_argument("--no-browser", action="store_true", help="don't open a browser tab")
-        a = sp.parse_args(argv[1:])
+        a = sp.parse_args(argv[1:] if argv and argv[0] == "serve" else argv)
         from .server import serve
         serve(a.port, open_browser=not a.no_browser)
         return 0
