@@ -32,7 +32,7 @@ python -m auditor examples/greenprint.json --replay examples/sample_answers.json
 # open runs/latest/report.html
 
 # Live audit with Claude, plus Claude stance labeling:
-export ANTHROPIC_API_KEY=sk-ant-...          # Windows: set ANTHROPIC_API_KEY=...
+export ANTHROPIC_API_KEY="sk-ant-..."           # Windows PowerShell: $env:ANTHROPIC_API_KEY = "sk-ant-..."
 python -m auditor examples/greenprint.json --engines claude --label
 
 # All three engines (needs OPENAI_API_KEY and GEMINI_API_KEY too):
